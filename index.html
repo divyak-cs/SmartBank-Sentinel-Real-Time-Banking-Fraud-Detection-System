@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartBank Sentinel</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f7fb;color:#172033}
+header{background:#101a35;color:white;padding:22px 6%;display:flex;justify-content:space-between;align-items:center}
+header h1{margin:0;font-size:24px}header span{opacity:.75}
+.container{max-width:1200px;margin:28px auto;padding:0 20px}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px}
+.card{background:white;border-radius:14px;padding:20px;box-shadow:0 4px 16px #0000000d}
+.card .num{font-size:30px;font-weight:bold;margin-top:8px}
+.grid{display:grid;grid-template-columns:360px 1fr;gap:22px}
+.panel{background:white;border-radius:14px;padding:22px;box-shadow:0 4px 16px #0000000d}
+label{display:block;font-size:13px;font-weight:bold;margin:12px 0 6px}
+input,select{width:100%;padding:10px;border:1px solid #d5dbea;border-radius:8px}
+button{width:100%;padding:12px;margin-top:16px;border:0;border-radius:8px;background:#3157d5;color:white;font-weight:bold;cursor:pointer}
+button:hover{opacity:.9}
+.result{margin-top:18px;padding:15px;border-radius:10px;display:none}
+.high{background:#ffe7e7}.medium{background:#fff4d6}.low{background:#e7f8ed}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:12px 8px;border-bottom:1px solid #edf0f5}
+.badge{padding:5px 8px;border-radius:20px;font-weight:bold;font-size:11px}
+.badge.high{background:#ffd2d2}.badge.medium{background:#ffeab0}.badge.low{background:#ccefd8}
+ul{padding-left:20px}
+@media(max-width:800px){.cards,.grid{grid-template-columns:1fr}.cards{gap:10px}}
+</style>
+
+<script>
+window.sbMonitoring = false;
+window.sbMonitorTimer = null;
+
+window.toggleMonitoring = async function () {
+    const btn = document.getElementById('monitorBtn');
+    const status = document.getElementById('monitorStatus');
+    const alertBox = document.getElementById('lastAlert');
+
+    if (window.sbMonitoring) {
+        window.sbMonitoring = false;
+        clearInterval(window.sbMonitorTimer);
+        window.sbMonitorTimer = null;
+        btn.textContent = '▶ Start Real-Time Monitoring';
+        btn.style.background = '#19a463';
+        status.textContent = '🔴 Monitoring stopped';
+        return;
+    }
+
+    window.sbMonitoring = true;
+    btn.textContent = '⏹ Stop Monitoring';
+    btn.style.background = '#d64545';
+    status.textContent = '🟢 Monitoring active — receiving transactions';
+
+    const run = async () => {
+        if (!window.sbMonitoring) return;
+        try {
+            const response = await fetch('/api/simulate-transaction', { method: 'POST' });
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const data = await response.json();
+
+            const icon = data.status.startsWith('HIGH') ? '🚨' :
+                         data.status.startsWith('MEDIUM') ? '⚠️' : '✅';
+
+            alertBox.innerHTML =
+                icon + ' ' + data.customer_id +
+                ' · ₹' + Number(data.amount).toLocaleString() +
+                ' · ' + data.status +
+                ' · Risk ' + data.risk_score + '/100 · ' + data.timestamp;
+
+            if (typeof window.loadDashboard === 'function') {
+                await window.loadDashboard();
+            }
+        } catch (err) {
+            alertBox.textContent = 'Transaction request failed: ' + err.message;
+            console.error('Real-time monitoring error:', err);
+        }
+    };
+
+    await run();
+    window.sbMonitorTimer = setInterval(run, 3000);
+};
+</script>
+
+</head>
+<body>
+<header>
+  <div><h1>🏦 SmartBank Sentinel</h1><span>AI Transaction Risk Intelligence</span></div>
+  <button id="monitorBtn" onclick="toggleMonitoring()" style="width:auto;margin:0;padding:10px 18px;background:#19a463">▶ Start Real-Time Monitoring</button>
+</header>
+
+<div class="container">
+  <div class="cards">
+    <div class="card">Total Transactions<div class="num" id="total">0</div></div>
+    <div class="card">High Risk<div class="num" id="high">0</div></div>
+    <div class="card">Medium Risk<div class="num" id="medium">0</div></div>
+    <div class="card">Low Risk<div class="num" id="low">0</div></div>
+  </div>
+  <div class="panel" style="margin-bottom:22px">
+    <strong id="monitorStatus">🔴 Monitoring stopped</strong>
+    <span id="lastAlert" style="margin-left:18px;color:#68738a">Start monitoring to receive transactions automatically.</span>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>Check Transaction</h2>
+      <label>Customer ID</label>
+      <input id="customer_id" value="C1024">
+      <label>Amount (₹)</label>
+      <input id="amount" type="number" value="85000">
+      <label>New Device?</label>
+      <select id="new_device"><option value="1">Yes</option><option value="0">No</option></select>
+      <label>Unusual Location?</label>
+      <select id="unusual_location"><option value="1">Yes</option><option value="0">No</option></select>
+      <label>Unusual Time?</label>
+      <select id="unusual_time"><option value="1">Yes</option><option value="0">No</option></select>
+      <label>New Merchant?</label>
+      <select id="new_merchant"><option value="1">Yes</option><option value="0">No</option></select>
+      <label>Transactions in Recent Period</label>
+      <input id="transaction_count" type="number" value="10">
+      <button onclick="checkTransaction()">Analyze Transaction</button>
+      <div id="result" class="result"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Recent Transactions</h2>
+      <div style="overflow:auto">
+      <table>
+        <thead><tr><th>ID</th><th>Customer</th><th>Amount</th><th>Risk</th><th>Status</th></tr></thead>
+        <tbody id="transactions"></tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+window.loadDashboard = async function() {
+  const stats = await fetch('/api/stats').then(r => r.json());
+  document.getElementById('total').textContent = stats.total;
+  document.getElementById('high').textContent = stats.high;
+  document.getElementById('medium').textContent = stats.medium;
+  document.getElementById('low').textContent = stats.low;
+
+  const data = await fetch('/api/transactions').then(r => r.json());
+  document.getElementById('transactions').innerHTML = data.map(t => {
+    const cls = t.status.startsWith('HIGH') ? 'high' :
+                t.status.startsWith('MEDIUM') ? 'medium' : 'low';
+    return `<tr>
+      <td>#${t.id}</td>
+      <td>${t.customer_id}</td>
+      <td>₹${Number(t.amount).toLocaleString()}</td>
+      <td>${t.risk_score}</td>
+      <td><span class="badge ${cls}">${t.status}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+async function simulateTransaction() {
+  if (!monitoring) return;
+
+  try {
+    const response = await fetch('/api/simulate-transaction', { method: 'POST' });
+    const data = await response.json();
+
+    const icon = data.status.startsWith('HIGH') ? '🚨' :
+                 data.status.startsWith('MEDIUM') ? '⚠️' : '✅';
+
+    document.getElementById('lastAlert').innerHTML =
+      `${icon} ${data.customer_id} · ₹${Number(data.amount).toLocaleString()} · ${data.status} · Risk ${data.risk_score}/100 · ${data.timestamp}`;
+
+    await loadDashboard();
+  } catch (error) {
+    document.getElementById('lastAlert').textContent =
+      'Unable to receive transaction. Check that the FastAPI server is running.';
+  }
+}
+
+
+
+async function checkTransaction() {
+  const payload = {
+    customer_id: document.getElementById('customer_id').value,
+    amount: Number(document.getElementById('amount').value),
+    new_device: Number(document.getElementById('new_device').value),
+    unusual_location: Number(document.getElementById('unusual_location').value),
+    unusual_time: Number(document.getElementById('unusual_time').value),
+    new_merchant: Number(document.getElementById('new_merchant').value),
+    transaction_count: Number(document.getElementById('transaction_count').value)
+  };
+
+  const response = await fetch('/api/check-transaction', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+
+  const data = await response.json();
+  const box = document.getElementById('result');
+  const cls = data.status.startsWith('HIGH') ? 'high' :
+              data.status.startsWith('MEDIUM') ? 'medium' : 'low';
+
+  box.className = 'result ' + cls;
+  box.style.display = 'block';
+  box.innerHTML = `<strong>${data.status}</strong><br>
+    Risk Score: <strong>${data.risk_score}/100</strong><br>
+    ${data.recommendation}<br><br>
+    <strong>Why?</strong>
+    <ul>${data.reasons.map(x => `<li>${x}</li>`).join('')}</ul>`;
+
+  await loadDashboard();
+}
+
+loadDashboard();
+</script>
+</body>
+</html>
